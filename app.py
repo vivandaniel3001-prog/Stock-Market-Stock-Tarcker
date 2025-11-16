@@ -59,7 +59,8 @@ def fetch_data(tickers, period="1y", interval="1d"):
                 # Silently skip if one ticker fails to fetch info
                 continue 
                 
-        return historical_data['Close'], latest_quotes
+        # The history data is extracted to the 'Close' column only for line charts
+        return historical_data.get('Close', pd.DataFrame()), latest_quotes
         
     except Exception as e:
         st.error(f"Error fetching market data: {e}")
@@ -118,15 +119,16 @@ else:
     
     # --- 1. Display Metrics ---
     # Create columns dynamically for metrics (max 4 per row for readability)
-    cols = st.columns(min(len(final_tickers), 4)) 
+    cols = st.columns(min(len(quotes_dict), 4) or 1) 
 
+    metrics_displayed = 0
     for i, ticker in enumerate(final_tickers):
         if ticker in quotes_dict:
             data = quotes_dict[ticker]
             # Determine color for the delta metric
             delta_color = "inverse" if data['Change'] < 0 else "normal"
             
-            with cols[i % 4]: # Cycle through the columns
+            with cols[metrics_displayed % 4]: # Cycle through the columns
                 # Display name above metric for clarity
                 st.markdown(f"**{data['Name'].split(' ')[0]}**")
                 
@@ -136,20 +138,26 @@ else:
                     delta=f"{data['Change']:+.2f} ({data['PercentChange']:+.2f}%)",
                     delta_color=delta_color
                 )
-        else:
-            with cols[i % 4]:
-                 st.warning(f"{ticker} not found or data unavailable.")
+            metrics_displayed += 1
+        # else:
+            # We skip warnings here to keep the metric columns clean, 
+            # as the missing stock could be custom input
+            
+    # Display missing ticker warnings at the bottom
+    missing_tickers = [t for t in final_tickers if t not in quotes_dict]
+    if missing_tickers:
+        st.warning(f"Could not retrieve data for: {', '.join(missing_tickers)}. Check ticker spelling.")
 
 
     st.markdown("---")
     
     # --- 2. Display Historical Chart ---
-    if not history_df.empty:
+    if not history_df.empty and history_df.shape[0] > 1: # Need more than 1 row to plot
         st.subheader(f"{chart_period} Price History")
         
-        # Prepare data for Plotly (unstack/melt to long format if needed, but for line chart, we can keep it wide)
+        # Prepare data for Plotly (unstack/melt to long format if needed)
         
-        # Handle single ticker case where history_df is a Series
+        # Handle single ticker case where history_df might be a Series
         if isinstance(history_df, pd.Series):
              chart_df = history_df.to_frame()
         else:
@@ -177,4 +185,4 @@ else:
         
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.warning("Historical price data could not be loaded for the selected tickers.")
+        st.info("Select a few tickers and click 'Fetch & Refresh Data' to see the historical price chart.")
